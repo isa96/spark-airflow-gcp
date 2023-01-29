@@ -1,0 +1,58 @@
+version: '3.8'
+name: big-data-tools
+
+x-airflow-common:
+  &airflow-common
+  build: .
+  image: apache/airflow:latest
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:postgres@postgresql/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    GOOGLE_APPLICATION_CREDENTIALS: /opt/airflow/service-account.json
+    DBT_PROFILES_DIR: /opt/airflow/dbt
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./spark-bigquery.jar:/opt/airflow/spark-bigquery.jar
+    - ./service-account.json:/opt/airflow/service-account.json
+  user: root
+
+services:
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    command: webserver
+    ports:
+      - 8090:8080
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: airflow
+      _AIRFLOW_WWW_USER_PASSWORD: airflow
+    restart: always
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    command: scheduler
+    restart: always
+
+  spark-master:
+    container_name: spark-master
+    image: bitnami/spark:latest
+    ports:
+    - 8080:8080
+    environment:
+      SPARK_MODE: master
+    restart: always
+
+  spark-worker:
+    container_name: spark-worker
+    image: bitnami/spark:latest
+    environment:
+      SPARK_MODE: worker
+      SPARK_MASTER_URL: spark://spark-master:7077
+    restart: always
